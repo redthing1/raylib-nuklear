@@ -5,6 +5,11 @@ SRC_PATH = src
 BUILD_PATH = build
 BIN_PATH = $(BUILD_PATH)/bin
 
+RELEASE ?= 0
+
+EXTRA_COMPILE_FLAGS :=
+EXTRA_INCLUDES :=
+
 # executable # 
 BIN_NAME = libraylib_nuklear.a
 
@@ -22,8 +27,24 @@ OBJECTS = $(SOURCES:$(SRC_PATH)/%.$(SRC_EXT)=$(BUILD_PATH)/%.o)
 DEPS = $(OBJECTS:.o=.d)
 
 # flags #
-COMPILE_FLAGS = -std=c++11 -Wall -Wextra -g
-INCLUDES = -I include/ -I /usr/local/include
+# COMPILE_FLAGS = -std=c++11 -Wall -Wextra -g
+# INCLUDES = -I include/ -I /usr/local/include
+DEFAULT_DEBUG_COMPILE_FLAGS = -std=c++11 -Wall -Wextra -g
+DEFAULT_RELEASE_COMPILE_FLAGS = -std=c++11 -Wall -Wextra -O3
+
+COMPILE_FLAGS :=
+INCLUDES := -I include/ -I /usr/local/include
+
+# if release is set, use release flags
+ifeq ($(RELEASE), 1)
+	COMPILE_FLAGS += $(DEFAULT_RELEASE_COMPILE_FLAGS)
+else
+	COMPILE_FLAGS += $(DEFAULT_DEBUG_COMPILE_FLAGS)
+endif
+
+COMPILE_FLAGS += $(EXTRA_COMPILE_FLAGS)
+INCLUDES += $(EXTRA_INCLUDES)
+
 # Space-separated pkg-config libraries used by this project
 LIBS =
 
