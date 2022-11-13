@@ -59,6 +59,8 @@ NK_API struct Color ColorFromNuklear(struct nk_color color);        // Convert a
 NK_API struct Color ColorFromNuklearF(struct nk_colorf color);      // Convert a Nuklear floating color to a raylib Color
 NK_API struct Rectangle RectangleFromNuklear(struct nk_rect rect);  // Convert a Nuklear rectangle to a raylib Rectangle
 NK_API struct nk_rect RectangleToNuklear(Rectangle rect);           // Convert a raylib Rectangle to a Nuklear Rectangle
+NK_API struct Rectangle RectangleFromNuklearScaled(struct nk_context * ctx, struct nk_rect rect);  // Convert a Nuklear rectangle to a raylib Rectangle with scale compensation
+NK_API struct nk_rect RectangleToNuklearScaled(struct nk_context * ctx, Rectangle rect);           // Convert a raylib Rectangle to a Nuklear Rectangle with scale compensation
 NK_API struct nk_image TextureToNuklear(Texture tex);               // Convert a raylib Texture to A Nuklear image
 NK_API struct Texture TextureFromNuklear(struct nk_image img);      // Convert a Nuklear image to a raylib Texture
 NK_API struct nk_image LoadNuklearImage(const char* path);          // Load a Nuklear image
@@ -787,6 +789,33 @@ NK_API struct
 nk_rect RectangleToNuklear(Rectangle rect)
 {
     return nk_rect(rect.x, rect.y, rect.width, rect.height);
+}
+
+/**
+ * Convert the given Nuklear rectangle to a raylib Rectangle, with scale compensation.
+ */
+NK_API struct
+Rectangle RectangleFromNuklearScaled(struct nk_context * ctx, struct nk_rect rect)
+{
+    const int scale = ctx->backend_render_scale;
+    NK_ASSERT(scale > 0);
+    Rectangle output;
+    output.x = rect.x * scale;
+    output.y = rect.y * scale;
+    output.width = rect.w * scale;
+    output.height = rect.h * scale;
+    return output;
+}
+
+/**
+ * Convert the given raylib Rectangle to a Nuklear rectangle, with scale compensation.
+ */
+NK_API struct
+nk_rect RectangleToNuklearScaled(struct nk_context * ctx, Rectangle rect)
+{
+    const int scale = ctx->backend_render_scale;
+    NK_ASSERT(scale > 0);
+    return nk_rect(rect.x / scale, rect.y / scale, rect.width / scale, rect.height / scale);
 }
 
 /**
