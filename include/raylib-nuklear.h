@@ -208,14 +208,16 @@ InitNuklearContext(struct nk_user_font* userFont)
     ctx->clip.paste = nk_raylib_clipboard_paste;
     ctx->clip.userdata = nk_handle_ptr(0);
 
-    // Rendering
-    ctx->backend_render_scale = 1;
-
     // Create the nuklear environment.
     if (nk_init_default(ctx, userFont) == 0) {
         TraceLog(LOG_ERROR, "NUKLEAR: Failed to initialize nuklear");
         return NULL;
     }
+
+    // Rendering
+    ctx->backend_render_scale = 1;
+    TraceLog(LOG_INFO, "NUKLEAR: Using backend render scale %d", ctx->backend_render_scale);
+
     TraceLog(LOG_INFO, "NUKLEAR: Initialized GUI");
 
     return ctx;
