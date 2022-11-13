@@ -37,7 +37,6 @@
 #define RAYLIB_NUKLEAR_H
 
 #include "raylib.h"
-#include <cassert>
 
 #ifndef NK_INCLUDE_STANDARD_VARARGS
 #define NK_INCLUDE_STANDARD_VARARGS
@@ -50,7 +49,7 @@ extern "C" {
 #endif
 
 NK_API struct nk_context* InitNuklear(int fontSize);                // Initialize the Nuklear GUI context
-NK_API struct nk_context* InitNuklearEx(Font font, float fontSize, int renderScale); // Initialize the Nuklear GUI context, with a custom font
+NK_API struct nk_context* InitNuklearEx(Font font, float fontSize); // Initialize the Nuklear GUI context, with a custom font
 NK_API void UpdateNuklear(struct nk_context * ctx);                 // Update the input state and internal components for Nuklear
 NK_API void DrawNuklear(struct nk_context * ctx);                   // Render the Nuklear GUI on the screen
 NK_API void UnloadNuklear(struct nk_context * ctx);                 // Deinitialize the Nuklear context
@@ -124,9 +123,6 @@ extern "C" {
  */
 #define RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS 20
 #endif  // RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS
-
-/* globals */
-static int backend_render_scale = 1;
 
 /**
  * Nuklear callback; Get the width of the given text.
@@ -212,6 +208,9 @@ InitNuklearContext(struct nk_user_font* userFont)
     ctx->clip.paste = nk_raylib_clipboard_paste;
     ctx->clip.userdata = nk_handle_ptr(0);
 
+    // Rendering
+    ctx->backend_render_scale = 1;
+
     // Create the nuklear environment.
     if (nk_init_default(ctx, userFont) == 0) {
         TraceLog(LOG_ERROR, "NUKLEAR: Failed to initialize nuklear");
@@ -257,7 +256,7 @@ InitNuklear(int fontSize)
  * @return The nuklear context, or NULL on error.
  */
 NK_API struct nk_context*
-InitNuklearEx(Font font, float fontSize, int renderScale)
+InitNuklearEx(Font font, float fontSize)
 {
     // Copy the font to a new raylib font pointer.
     struct Font* newFont = (struct Font*)MemAlloc(sizeof(struct Font));
@@ -278,9 +277,6 @@ InitNuklearEx(Font font, float fontSize, int renderScale)
     userFont->userdata = nk_handle_ptr(newFont);
     userFont->height = fontSize;
     userFont->width = nk_raylib_font_get_text_width_user_font;
-
-    // Rendering
-    backend_render_scale = (int)renderScale;
 
     // Nuklear context.
     return InitNuklearContext(userFont);
@@ -341,8 +337,8 @@ NK_API void
 DrawNuklear(struct nk_context * ctx)
 {
     const struct nk_command *cmd;
-    const int scale = backend_render_scale;
-    assert(scale > 0);
+    const int scale = ctx->backend_render_scale;
+    NK_ASSERT(scale > 0);
 
     nk_foreach(cmd, ctx) {
         switch (cmd->type) {
@@ -696,8 +692,8 @@ NK_API void nk_raylib_input_keyboard(struct nk_context * ctx)
  */
 NK_API void nk_raylib_input_mouse(struct nk_context * ctx)
 {
-    const int scale = backend_render_scale;
-    assert(scale > 0);
+    const int scale = ctx->backend_render_scale;
+    NK_ASSERT(scale > 0);
 
     // nk_input_motion(ctx, GetMouseX(), GetMouseY());
     // nk_input_button(ctx, NK_BUTTON_LEFT, GetMouseX(), GetMouseY(), IsMouseButtonDown(MOUSE_LEFT_BUTTON));
