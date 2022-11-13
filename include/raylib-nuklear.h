@@ -534,8 +534,6 @@ DrawNuklear(struct nk_context * ctx)
                 // float fontSize = text->font->height;
                 float fontSize = text->font->height * scale;
                 Font* font = (Font*)text->font->userdata.ptr;
-                // DrawRectangle(text->x, text->y, text->w, text->h, background);
-                DrawRectangle(text->x * scale, text->y * scale, text->w * scale, text->h * scale, background);
                 if (font != NULL) {
                     // Vector2 position = {(float)text->x, (float)text->y};
                     Vector2 position = {(float)text->x * scale, (float)text->y * scale};
