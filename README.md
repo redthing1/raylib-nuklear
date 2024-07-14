@@ -44,6 +44,7 @@ int main() {
         // https://github.com/Immediate-Mode-UI/Nuklear/wiki/Window
         if (nk_begin(ctx, "Nuklear", nk_rect(100, 100, 220, 220),
                 NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
+            nk_layout_row_static(ctx, 50, 150, 1);
             if (nk_button_label(ctx, "Button")) {
                 // Button was clicked!
             }
@@ -71,8 +72,9 @@ int main() {
 ## API
 
 ``` c
-struct nk_context* InitNuklear(int fontSize);                // Initialize the Nuklear GUI context
+struct nk_context* InitNuklear(int fontSize);                // Initialize the Nuklear GUI context using raylib's font
 struct nk_context* InitNuklearEx(Font font, float fontSize); // Initialize the Nuklear GUI context, with a custom font
+Font LoadFontFromNuklear(int fontSize);                      // Loads the default Nuklear font
 void UpdateNuklear(struct nk_context * ctx);                 // Update the input state and internal components for Nuklear
 void DrawNuklear(struct nk_context * ctx);                   // Render the Nuklear GUI on the screen
 void UnloadNuklear(struct nk_context * ctx);                 // Deinitialize the Nuklear context
@@ -87,15 +89,15 @@ struct Texture TextureFromNuklear(struct nk_image img);      // Convert a Nuklea
 struct nk_image LoadNuklearImage(const char* path);          // Load a Nuklear image
 void UnloadNuklearImage(struct nk_image img);                // Unload a Nuklear image. And free its data
 void CleanupNuklearImage(struct nk_image img);               // Frees the data stored by the Nuklear image
-void SetNuklearScaling(struct nk_context * ctx, float scaling); // Scale the graphical user interface larger or smaller (1 is the default)
-float GetNuklearScaling(struct nk_context * ctx);            // Retrieves the scale of the given Nuklear contextgit
+void SetNuklearScaling(struct nk_context * ctx, float scaling); // Sets the scaling for the given Nuklear context
+float GetNuklearScaling(struct nk_context * ctx);            // Retrieves the scaling of the given Nuklear context
 ```
 
 See the [Nuklear API documenation](https://immediate-mode-ui.github.io/Nuklear/doc/nuklear.html) for more how to use Nuklear.
 
 ## Comparision
 
-There are a few other graphical user interface solutions out there for use with raylib. While every project's needs differ, this aims to compare and contrast each one. In general, however, if you're unsure which GUI to use, use raygui.
+There are a few other graphical user interface solutions out there for use with raylib. While every project's needs differ, this aims to compare and contrast each one. In general, however, if you're unsure which GUI to use with raylib, use [raygui](https://github.com/raysan5/raygui).
 
 ### Nuklear
 
@@ -112,7 +114,7 @@ There are a few other graphical user interface solutions out there for use with 
 #### Cons
 
 - Larger code size, which can result in slower compile time
-- Slightly more complex API than raygui
+- More complex API than raygui
 
 ### raygui
 
@@ -129,7 +131,7 @@ There are a few other graphical user interface solutions out there for use with 
 #### Cons
 
 - No automatic layouts
-- No documentation
+- Lacks some documentation
 - Not many advanced controls
 
 ### ImGui
@@ -141,6 +143,7 @@ There are a few other graphical user interface solutions out there for use with 
 - Pretty much an industry standard
 - Lots of advanced controls
 - Automatic layouts
+- Large community
 
 #### Cons
 

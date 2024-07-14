@@ -5,7 +5,8 @@ if (NOT raylib_FOUND)
         FetchContent_Declare(
         raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
-        GIT_TAG 4.2.0
+        GIT_TAG 5.0
+        GIT_SHALLOW 1
     )
     FetchContent_GetProperties(raylib)
     if (NOT raylib_POPULATED) # Have we downloaded raylib yet?
@@ -44,6 +45,15 @@ target_link_libraries(raylib-nuklear-font PUBLIC
     raylib_nuklear
 )
 
+# raylib-nuklear-font
+add_executable(raylib-nuklear-font-default
+    raylib-nuklear-font-default.c
+)
+target_link_libraries(raylib-nuklear-font-default PUBLIC
+    raylib
+    raylib_nuklear
+)
+
 # raylib-nuklear-texture
 add_executable(raylib-nuklear-texture
     raylib-nuklear-texture.c
@@ -75,3 +85,13 @@ endif()
 # Resources
 configure_file(resources/anonymous_pro_bold.ttf resources/anonymous_pro_bold.ttf COPYONLY)
 configure_file(resources/test-image.png resources/test-image.png COPYONLY)
+
+# Web Configurations
+#if (${PLATFORM} STREQUAL "Web")
+if (EMSCRIPTEN)
+    # Tell Emscripten to build an example.html file.
+    set_target_properties(raylib-nuklear-demo PROPERTIES SUFFIX ".html")
+    set_target_properties(raylib-nuklear-demo PROPERTIES OUTPUT_NAME "index")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/minshell.html")
+    #add_definitions(-DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-s USE_GLFW=3")
+endif()

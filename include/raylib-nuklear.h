@@ -1,13 +1,13 @@
 /**********************************************************************************************
 *
-*   raylib-nuklear - Nuklear for Raylib.
+*   raylib-nuklear v5.0.0 - Nuklear GUI for Raylib.
 *
 *   FEATURES:
-*       - Use the nuklear immediate-mode graphical user interface in raylib.
+*       - Use the Nuklear immediate-mode graphical user interface in raylib.
 *
 *   DEPENDENCIES:
-*       - raylib 4.2 https://www.raylib.com/
-*       - nuklear https://github.com/Immediate-Mode-UI/Nuklear
+*       - raylib 4.5+ https://www.raylib.com/
+*       - Nuklear https://github.com/Immediate-Mode-UI/Nuklear
 *
 *   LICENSE: zlib/libpng
 *
@@ -39,21 +39,18 @@
 #include "raylib.h"
 
 // Nuklear defines
-
+#define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_STANDARD_BOOL
 #define NK_INCLUDE_COMMAND_USERDATA
-// TODO: Replace NK_INCLUDE_DEFAULT_ALLOCATOR with MemAlloc() and MemFree()
-#define NK_INCLUDE_DEFAULT_ALLOCATOR
-#define NK_INCLUDE_COMMAND_USERDATA
-
-// TODO: Figure out if we can use STANDARD_BOOL here?
-//#define NK_INCLUDE_STANDARD_BOOL
-//#ifndef NK_BOOL
-//#define NK_BOOL bool
-//#endif  // NK_BOOL
+#define NK_KEYSTATE_BASED_INPUT
 
 #ifndef NK_ASSERT
-#define NK_ASSERT(condition) do { if (!(condition)) { TraceLog(LOG_WARNING, "NUKLEAR: Failed assert \"%s\" (%s:%i)", #condition, "nuklear.h", __LINE__); }} while (0)
+#ifdef NDEBUG
+#define NK_ASSERT(condition) ((void)0)
+#else
+#define NK_ASSERT(condition) do { if (!(condition)) { TraceLog(LOG_ERROR, "NUKLEAR: Failed assert \"%s\" (%s:%i)", #condition, "nuklear.h", __LINE__); }} while (0)
+#endif  // NDEBUG
 #endif  // NK_ASSERT
 
 #include "nuklear.h"
@@ -62,8 +59,9 @@
 extern "C" {
 #endif
 
-NK_API struct nk_context* InitNuklear(int fontSize);                // Initialize the Nuklear GUI context
+NK_API struct nk_context* InitNuklear(int fontSize);                // Initialize the Nuklear GUI context using raylib's font
 NK_API struct nk_context* InitNuklearEx(Font font, float fontSize); // Initialize the Nuklear GUI context, with a custom font
+NK_API Font LoadFontFromNuklear(int fontSize);                      // Loads the default Nuklear font
 NK_API void UpdateNuklear(struct nk_context * ctx);                 // Update the input state and internal components for Nuklear
 NK_API void DrawNuklear(struct nk_context * ctx);                   // Render the Nuklear GUI on the screen
 NK_API void UnloadNuklear(struct nk_context * ctx);                 // Deinitialize the Nuklear context
@@ -81,6 +79,17 @@ NK_API void CleanupNuklearImage(struct nk_image img);               // Frees the
 NK_API void SetNuklearScaling(struct nk_context * ctx, float scaling); // Sets the scaling for the given Nuklear context
 NK_API float GetNuklearScaling(struct nk_context * ctx);            // Retrieves the scaling of the given Nuklear context
 
+// Internal Nuklear functions
+NK_API float nk_raylib_font_get_text_width(nk_handle handle, float height, const char *text, int len);
+NK_API float nk_raylib_font_get_text_width_user_font(nk_handle handle, float height, const char *text, int len);
+NK_API void nk_raylib_clipboard_paste(nk_handle usr, struct nk_text_edit *edit);
+NK_API void nk_raylib_clipboard_copy(nk_handle usr, const char *text, int len);
+NK_LIB void* nk_raylib_malloc(nk_handle unused, void *old, nk_size size);
+NK_LIB void nk_raylib_mfree(nk_handle unused, void *ptr);
+NK_API struct nk_context* InitNuklearContext(struct nk_user_font* userFont);
+NK_API void nk_raylib_input_keyboard(struct nk_context * ctx);
+NK_API void nk_raylib_input_mouse(struct nk_context * ctx);
+
 #ifdef __cplusplus
 }
 #endif
@@ -90,6 +99,8 @@ NK_API float GetNuklearScaling(struct nk_context * ctx);            // Retrieves
 #ifdef RAYLIB_NUKLEAR_IMPLEMENTATION
 #ifndef RAYLIB_NUKLEAR_IMPLEMENTATION_ONCE
 #define RAYLIB_NUKLEAR_IMPLEMENTATION_ONCE
+
+#include <stddef.h> // NULL
 
 // Math
 #ifndef NK_COS
@@ -103,7 +114,6 @@ NK_API float GetNuklearScaling(struct nk_context * ctx);            // Retrieves
 #endif  // NK_INV_SQRT
 
 #define NK_IMPLEMENTATION
-#define NK_KEYSTATE_BASED_INPUT
 #include "nuklear.h"
 
 #ifdef __cplusplus
@@ -114,7 +124,7 @@ extern "C" {
 /**
  * The default font size that is used when a font size is not provided.
  */
-#define RAYLIB_NUKLEAR_DEFAULT_FONTSIZE 10
+#define RAYLIB_NUKLEAR_DEFAULT_FONTSIZE 13
 #endif  // RAYLIB_NUKLEAR_DEFAULT_FONTSIZE
 
 #ifndef RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS
@@ -126,11 +136,15 @@ extern "C" {
 #define RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS 20
 #endif  // RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS
 
+#ifdef RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT
+    #include "raylib-nuklear-font.h"
+#endif
+
 /**
  * The user data that's leverages internally through Nuklear.
  */
 typedef struct NuklearUserData {
-    float scaling;
+    float scaling; // The scaling of the Nuklear user interface.
 } NuklearUserData;
 
 /**
@@ -147,7 +161,9 @@ nk_raylib_font_get_text_width(nk_handle handle, float height, const char *text, 
         // Grab the text with the cropped length so that it only measures the desired string length.
         const char* subtext = TextSubtext(text, 0, len);
 
-        return (float)MeasureText(subtext, (int)height);
+        // Raylib only counts the spacing between characters, but Nuklear expects one spacing to be
+        // counter for every character in the string:
+        return (float)MeasureText(subtext, (int)height) + height / 10.0f;
     }
 
     return 0;
@@ -166,7 +182,9 @@ nk_raylib_font_get_text_width_user_font(nk_handle handle, float height, const ch
         const char* subtext = TextSubtext(text, 0, len);
 
         // Spacing is determined by the font size divided by 10.
-        return MeasureTextEx(*(Font*)handle.ptr, subtext, height, height / 10.0f).x;
+        // Raylib only counts the spacing between characters, but Nuklear expects one spacing to be
+        // counter for every character in the string:
+        return MeasureTextEx(*(Font*)handle.ptr, subtext, height, height / 10.0f).x + height / 10.0f;
     }
 
     return 0;
@@ -201,6 +219,29 @@ nk_raylib_clipboard_copy(nk_handle usr, const char *text, int len)
 }
 
 /**
+ * Nuklear callback; Allocate memory for Nuklear.
+ *
+ * @internal
+ */
+NK_LIB void*
+nk_raylib_malloc(nk_handle unused, void *old, nk_size size)
+{
+    NK_UNUSED(unused);
+    NK_UNUSED(old);
+    return MemAlloc((unsigned int)size);
+}
+
+/**
+ * Nuklear callback; Free memory for Nuklear.
+ */
+NK_LIB void
+nk_raylib_mfree(nk_handle unused, void *ptr)
+{
+    NK_UNUSED(unused);
+    MemFree(ptr);
+}
+
+/**
  * Initialize the Nuklear context for use with Raylib, with the given Nuklear user font.
  *
  * @param userFont The Nuklear user font to initialize the Nuklear context with.
@@ -211,16 +252,34 @@ NK_API struct nk_context*
 InitNuklearContext(struct nk_user_font* userFont)
 {
     struct nk_context* ctx = (struct nk_context*)MemAlloc(sizeof(struct nk_context));
+    if (ctx == NULL) {
+        TraceLog(LOG_ERROR, "NUKLEAR: Failed to initialize nuklear memory");
+        return NULL;
+    }
+
     struct NuklearUserData* userData = (struct NuklearUserData*)MemAlloc(sizeof(struct NuklearUserData));
+    if (userData == NULL) {
+        TraceLog(LOG_ERROR, "NUKLEAR: Failed to initialize nuklear user data");
+        MemFree(ctx);
+        return NULL;
+    }
 
     // Clipboard
     ctx->clip.copy = nk_raylib_clipboard_copy;
     ctx->clip.paste = nk_raylib_clipboard_paste;
     ctx->clip.userdata = nk_handle_ptr(0);
 
-    // Create the nuklear environment.
-    if (nk_init_default(ctx, userFont) == 0) {
+    // Allocator
+    struct nk_allocator alloc;
+    alloc.userdata = nk_handle_ptr(0);
+    alloc.alloc = nk_raylib_malloc;
+    alloc.free = nk_raylib_mfree;
+
+    // Initialize the context.
+    if (!nk_init(ctx, &alloc, userFont)) {
         TraceLog(LOG_ERROR, "NUKLEAR: Failed to initialize nuklear");
+        MemFree(ctx);
+        MemFree(userData);
         return NULL;
     }
 
@@ -298,6 +357,40 @@ InitNuklearEx(Font font, float fontSize)
 }
 
 /**
+ * Load the default Nuklear font. Requires `RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT` to be defined.
+ *
+ * @param size The size of the font to load (optional). Provide 0 if you'd like to use the default size from Nuklear.
+ *
+ * @return The loaded font, or an empty font on error.
+ *
+ * @code
+ * #define RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT
+ * #include "raylib-nuklear.h"
+ * Font font = LoadFontFromNuklear(0);
+ * @endcode
+ */
+NK_API Font LoadFontFromNuklear(int size) {
+#ifndef RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT
+    (void)size;
+    TraceLog(LOG_ERROR, "NUKLEAR: RAYLIB_NUKLEAR_INCLUDE_DEFAULT_FONT must be defined to use LoadFontFromNuklear()");
+    return CLITERAL(Font) {0};
+#else
+    if (size <= 0) {
+        size = RAYLIB_NUKLEAR_DEFAULT_FONTSIZE;
+    }
+
+    #ifndef RAYLIB_NUKLEAR_DEFAULT_FONT_GLYPHS
+    /**
+     * The amount of glyphs to load for the default font.
+     */
+    #define RAYLIB_NUKLEAR_DEFAULT_FONT_GLYPHS 95
+    #endif
+
+    return LoadFontFromMemory(".ttf", RAYLIB_NUKLEAR_DEFAULT_FONT_NAME, RAYLIB_NUKLEAR_DEFAULT_FONT_SIZE, size, NULL, RAYLIB_NUKLEAR_DEFAULT_FONT_GLYPHS);
+#endif
+}
+
+/**
  * Convert the given Nuklear color to a raylib color.
  */
 NK_API Color
@@ -351,6 +444,11 @@ ColorToNuklearF(Color color)
 NK_API void
 DrawNuklear(struct nk_context * ctx)
 {
+    // Protect against drawing when there's nothing to draw.
+    if (ctx == NULL || nk__begin(ctx) == 0) {
+        return;
+    }
+
     const struct nk_command *cmd;
     const float scale = GetNuklearScaling(ctx);
 
@@ -395,10 +493,22 @@ DrawNuklear(struct nk_context * ctx)
                 const struct nk_command_rect *r = (const struct nk_command_rect *)cmd;
                 Color color = ColorFromNuklear(r->color);
                 Rectangle rect = {(float)r->x * scale, (float)r->y * scale, (float)r->w * scale, (float)r->h * scale};
-                if (r->rounding > 0) {
-                    float roundness = (float)r->rounding * 4.0f / (rect.width + rect.height);
-                    // TODO: DrawRectangleRoundedLines - Is 1 the correct line segments?
-                    DrawRectangleRoundedLines(rect, roundness, 1, r->line_thickness * scale, color);
+                float roundness = (rect.width > rect.height) ?
+                        ((2 * r->rounding * scale)/rect.height) : ((2 * r->rounding * scale)/rect.width);
+                roundness = NK_CLAMP(0.0f, roundness, 1.0f);
+                if (roundness > 0.0f) {
+                    // DrawRectangleRoundedLines doesn't work in the same way as DrawRectangleLinesEx and it draws
+                    // the outline outside the region defined by the rectangle. To compensate for that, shrink
+                    // the rectangle by the thickness plus 1 (due to inconsistencies from DrawRectangleRoundedLines):
+                    rect.x += ((float) r->line_thickness) * scale + 1.0f;
+                    rect.y += ((float) r->line_thickness) * scale + 1.0f;
+                    rect.width = NK_MAX(rect.width - (2 * ((float) r->line_thickness) * scale + 1.0f), 0.0f);
+                    rect.height = NK_MAX(rect.height - (2 * ((float) r->line_thickness) * scale + 1.0f), 0.0f);
+#if RAYLIB_VERSION_MAJOR >= 5 && RAYLIB_VERSION_MINOR == 0
+                    DrawRectangleRoundedLines(rect, roundness, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, (float)r->line_thickness * scale, color);
+#else
+                    DrawRectangleRoundedLinesEx(rect, roundness, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, (float)r->line_thickness * scale, color);
+#endif
                 }
                 else {
                     DrawRectangleLinesEx(rect, r->line_thickness * scale, color);
@@ -409,9 +519,11 @@ DrawNuklear(struct nk_context * ctx)
                 const struct nk_command_rect_filled *r = (const struct nk_command_rect_filled *)cmd;
                 Color color = ColorFromNuklear(r->color);
                 Rectangle rect = {(float)r->x * scale, (float)r->y * scale, (float)r->w * scale, (float)r->h * scale};
-                if (r->rounding > 0) {
-                    float roundness = (float)r->rounding * 4.0f / (rect.width + rect.height);
-                    DrawRectangleRounded(rect, roundness, 1, color);
+                float roundness = (rect.width > rect.height) ?
+                        ((2 * r->rounding * scale)/rect.height) : ((2 * r->rounding * scale)/rect.width);
+                roundness = NK_CLAMP(0.0f, roundness, 1.0f);
+                if (roundness > 0.0f) {
+                    DrawRectangleRounded(rect, roundness, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, color);
                 }
                 else {
                     DrawRectangleRec(rect, color);
@@ -431,7 +543,9 @@ DrawNuklear(struct nk_context * ctx)
             case NK_COMMAND_CIRCLE: {
                 const struct nk_command_circle *c = (const struct nk_command_circle *)cmd;
                 Color color = ColorFromNuklear(c->color);
-                DrawEllipseLines((int)(c->x * scale + c->w * scale / 2.0f), (int)(c->y * scale + c->h * scale / 2.0f), (int)(c->w * scale / 2.0f), (int)(c->h * scale / 2.0f), color);
+                for (unsigned short i = 0; i < c->line_thickness; i++) {
+                    DrawEllipseLines((int)(c->x * scale + c->w * scale / 2.0f), (int)(c->y * scale + c->h * scale / 2.0f), c->w * scale / 2.0f - (float)i / 2.0f, c->h * scale / 2.0f - (float)i / 2.0f, color);
+                }
             } break;
 
             case NK_COMMAND_CIRCLE_FILLED: {
@@ -444,14 +558,14 @@ DrawNuklear(struct nk_context * ctx)
                 const struct nk_command_arc *a = (const struct nk_command_arc*)cmd;
                 Color color = ColorFromNuklear(a->color);
                 Vector2 center = {(float)a->cx, (float)a->cy};
-                DrawRingLines(center, 0, a->r * scale, a->a[0] * RAD2DEG - 45, a->a[1] * RAD2DEG - 45, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, color);
+                DrawRingLines(center, 0, a->r * scale, a->a[0] * RAD2DEG, a->a[1] * RAD2DEG, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, color);
             } break;
 
             case NK_COMMAND_ARC_FILLED: {
                 const struct nk_command_arc_filled *a = (const struct nk_command_arc_filled*)cmd;
                 Color color = ColorFromNuklear(a->color);
                 Vector2 center = {(float)a->cx * scale, (float)a->cy * scale};
-                DrawRing(center, 0, a->r * scale, a->a[0] * RAD2DEG - 45, a->a[1] * RAD2DEG - 45, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, color);
+                DrawRing(center, 0, a->r * scale, a->a[0] * RAD2DEG, a->a[1] * RAD2DEG, RAYLIB_NUKLEAR_DEFAULT_ARC_SEGMENTS, color);
             } break;
 
             case NK_COMMAND_TRIANGLE: {
@@ -460,6 +574,7 @@ DrawNuklear(struct nk_context * ctx)
                 Vector2 point1 = {(float)t->b.x * scale, (float)t->b.y * scale};
                 Vector2 point2 = {(float)t->a.x * scale, (float)t->a.y * scale};
                 Vector2 point3 = {(float)t->c.x * scale, (float)t->c.y * scale};
+                // TODO: Add line thickness to NK_COMMAND_TRIANGLE
                 DrawTriangleLines(point1, point2, point3, color);
             } break;
 
@@ -473,30 +588,31 @@ DrawNuklear(struct nk_context * ctx)
             } break;
 
             case NK_COMMAND_POLYGON: {
-                // TODO: Confirm Polygon
                 const struct nk_command_polygon *p = (const struct nk_command_polygon*)cmd;
                 Color color = ColorFromNuklear(p->color);
-                struct Vector2* points = (struct Vector2*)MemAlloc(p->point_count * (unsigned short)sizeof(Vector2));
+                struct Vector2* points = (struct Vector2*)MemAlloc((p->point_count + 1) * (unsigned short)sizeof(Vector2));
                 unsigned short i;
                 for (i = 0; i < p->point_count; i++) {
                     points[i].x = p->points[i].x * scale;
                     points[i].y = p->points[i].y * scale;
                 }
-                DrawTriangleStrip(points, p->point_count, color);
+                points[p->point_count] = points[0];
+                DrawLineStrip(points, p->point_count + 1, color);
                 MemFree(points);
             } break;
 
             case NK_COMMAND_POLYGON_FILLED: {
-                // TODO: Polygon filled expects counter clockwise order
+                // TODO: Implement NK_COMMAND_POLYGON_FILLED
                 const struct nk_command_polygon_filled *p = (const struct nk_command_polygon_filled*)cmd;
                 Color color = ColorFromNuklear(p->color);
-                struct Vector2* points = (struct Vector2*)MemAlloc(p->point_count * (unsigned short)sizeof(Vector2));
+                struct Vector2* points = (struct Vector2*)MemAlloc((p->point_count + 1) * (unsigned short)sizeof(Vector2));
                 unsigned short i;
                 for (i = 0; i < p->point_count; i++) {
                     points[i].x = p->points[i].x * scale;
                     points[i].y = p->points[i].y * scale;
                 }
-                DrawTriangleFan(points, p->point_count, color);
+                points[p->point_count] = points[0];
+                DrawLineStrip(points, p->point_count + 1, color);
                 MemFree(points);
             } break;
 
@@ -531,7 +647,7 @@ DrawNuklear(struct nk_context * ctx)
             case NK_COMMAND_IMAGE: {
                 const struct nk_command_image *i = (const struct nk_command_image *)cmd;
                 Texture texture = *(Texture*)i->img.handle.ptr;
-                Rectangle source = {0, 0, (float)texture.width, (float)texture.height};
+                Rectangle source = {i->img.region[0], i->img.region[1], (float)i->img.region[2], (float)i->img.region[3]};
                 Rectangle dest = {(float)i->x * scale, (float)i->y * scale, (float)i->w * scale, (float)i->h * scale};
                 Vector2 origin = {0, 0};
                 Color tint = ColorFromNuklear(i->col);
@@ -560,7 +676,8 @@ DrawNuklear(struct nk_context * ctx)
  *
  * @internal
  */
-NK_API void nk_raylib_input_keyboard(struct nk_context * ctx)
+NK_API void
+nk_raylib_input_keyboard(struct nk_context * ctx)
 {
     bool control = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
@@ -672,7 +789,8 @@ NK_API void nk_raylib_input_keyboard(struct nk_context * ctx)
  *
  * @internal
  */
-NK_API void nk_raylib_input_mouse(struct nk_context * ctx)
+NK_API void
+nk_raylib_input_mouse(struct nk_context * ctx)
 {
     const float scale = GetNuklearScaling(ctx);
     const int mouseX = (int)((float)GetMouseX() / scale);
@@ -701,6 +819,10 @@ NK_API void nk_raylib_input_mouse(struct nk_context * ctx)
 NK_API void
 UpdateNuklear(struct nk_context * ctx)
 {
+    // Update the time that has changed since last frame.
+    ctx->delta_time_seconds = GetFrameTime();
+
+    // Update the input state.
     nk_input_begin(ctx);
     {
         nk_raylib_input_mouse(ctx);
@@ -745,6 +867,7 @@ UnloadNuklear(struct nk_context * ctx)
 
     // Unload the nuklear context.
     nk_free(ctx);
+    MemFree(ctx);
     TraceLog(LOG_INFO, "NUKLEAR: Unloaded GUI");
 }
 
@@ -776,7 +899,8 @@ nk_rect RectangleToNuklear(struct nk_context* ctx, Rectangle rect)
 /**
  * Convert the given raylib texture to a Nuklear image
  */
-NK_API struct nk_image TextureToNuklear(Texture tex)
+NK_API struct nk_image
+TextureToNuklear(Texture tex)
 {
 	// Declare the img to store data and allocate memory
 	// For the texture
@@ -795,13 +919,20 @@ NK_API struct nk_image TextureToNuklear(Texture tex)
 	img.w = (nk_ushort)stored_tex->width;
 	img.h = (nk_ushort)stored_tex->height;
 
+    // Set the region so we can sub-select the image later.
+    img.region[0] = (nk_ushort)0;
+    img.region[1] = (nk_ushort)0;
+    img.region[2] = img.w;
+    img.region[3] = img.h;
+
 	return img;
 }
 
 /**
  * Convert the given Nuklear image to a raylib Texture
  */
-NK_API struct Texture TextureFromNuklear(struct nk_image img)
+NK_API struct Texture
+TextureFromNuklear(struct nk_image img)
 {
 	// Declare texture for storage
 	// And get back the stored texture
@@ -823,7 +954,8 @@ NK_API struct Texture TextureFromNuklear(struct nk_image img)
  *
  * @param path The path to the image
  */
-NK_API struct nk_image LoadNuklearImage(const char* path)
+NK_API struct nk_image
+LoadNuklearImage(const char* path)
 {
 	return TextureToNuklear(LoadTexture(path));
 }
@@ -833,7 +965,8 @@ NK_API struct nk_image LoadNuklearImage(const char* path)
  *
  * @param img The Nuklear image to unload
  */
-NK_API void UnloadNuklearImage(struct nk_image img)
+NK_API void
+UnloadNuklearImage(struct nk_image img)
 {
 	Texture tex = TextureFromNuklear(img);
 	UnloadTexture(tex);
@@ -846,7 +979,8 @@ NK_API void UnloadNuklearImage(struct nk_image img)
  *
  * @param img The Nuklear image to cleanup
 */
-NK_API void CleanupNuklearImage(struct nk_image img)
+NK_API void
+CleanupNuklearImage(struct nk_image img)
 {
     MemFree(img.handle.ptr);
 }
@@ -857,7 +991,8 @@ NK_API void CleanupNuklearImage(struct nk_image img)
  * @param ctx The nuklear context.
  * @param scaling How much scale to apply to the graphical user interface.
  */
-NK_API void SetNuklearScaling(struct nk_context * ctx, float scaling)
+NK_API void
+SetNuklearScaling(struct nk_context * ctx, float scaling)
 {
     if (ctx == NULL) {
         return;
@@ -879,7 +1014,8 @@ NK_API void SetNuklearScaling(struct nk_context * ctx, float scaling)
  *
  * @return The scale value that had been set for the Nuklear context. 1.0f is the default scale value.
  */
-NK_API float GetNuklearScaling(struct nk_context * ctx)
+NK_API float
+GetNuklearScaling(struct nk_context * ctx)
 {
     if (ctx == NULL) {
         return 1.0f;
