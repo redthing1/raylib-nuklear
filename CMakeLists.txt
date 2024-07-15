@@ -1,35 +1,42 @@
-cmake_minimum_required(VERSION 3.11)
-project(raylib_nuklear
-    DESCRIPTION "raylib_nuklear: Nuklear immediate mode GUI for raylib."
-    HOMEPAGE_URL "https://github.com/robloach/raylib-nuklear"
-    VERSION 5.0.0
-    LANGUAGES C
+cmake_minimum_required(VERSION 3.10)
+project(rlnuklear VERSION 1.0 LANGUAGES C)
+
+# Accept RAYLIB_DIR as an argument
+if(NOT DEFINED RAYLIB_DIR)
+    message(FATAL_ERROR "RAYLIB_DIR is not defined. Please specify the Raylib directory.")
+endif()
+
+# Add the library
+add_library(${PROJECT_NAME} STATIC
+    src/rlnuklear.c
 )
 
-# raylib-nuklear
-add_subdirectory(include)
+# Include directories
+target_include_directories(${PROJECT_NAME} PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${RAYLIB_DIR}/src
+)
 
-# Options
-if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
-    set(RAYLIB_NUKLEAR_IS_MAIN TRUE)
-else()
-    set(RAYLIB_NUKLEAR_IS_MAIN FALSE)
-endif()
-option(RAYLIB_NUKLEAR_BUILD_EXAMPLES "Examples" ${RAYLIB_NUKLEAR_IS_MAIN})
+# Link against Raylib
+target_link_directories(${PROJECT_NAME} PUBLIC ${RAYLIB_DIR}/src)
+target_link_libraries(${PROJECT_NAME} PUBLIC raylib)
 
-# Examples
-if (RAYLIB_NUKLEAR_BUILD_EXAMPLES)
-    add_subdirectory(examples)
+# Set C standard
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+)
 
-    # Testing
-    include(CTest)
-    enable_testing()
-    if (BUILD_TESTING)
-        # set(CTEST_CUSTOM_TESTS_IGNORE
-        #     pkg-config--static
-        # )
-        # Always print verbose output when tests fail if run using `make test`.
-        list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
-        add_subdirectory(test)
-    endif()
-endif()
+# Install rules
+install(TARGETS ${PROJECT_NAME}
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+install(FILES 
+    include/nuklear.h
+    include/raylib-nuklear-font.h
+    include/raylib-nuklear.h
+    DESTINATION include
+)
