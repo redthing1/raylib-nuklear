@@ -17,6 +17,9 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     "${RAYLIB_DIR}/src"
 )
 
+# Print raylib include dir
+message(STATUS "Raylib include dir: ${RAYLIB_DIR}/src")
+
 # Link against Raylib
 target_link_directories(${PROJECT_NAME} PUBLIC ${RAYLIB_DIR}/src)
 target_link_libraries(${PROJECT_NAME} PUBLIC raylib)
